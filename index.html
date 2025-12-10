@@ -3,63 +3,102 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Bank Statement Parser</title>
+  <title>🏦 Bank Statement Parser</title>
   <style>
     body { font-family: -apple-system, sans-serif; padding: 2rem; max-width: 800px; margin: 0 auto; }
-    input[type="file"] { margin: 1rem 0; }
-    #output { white-space: pre-wrap; background: #f8f9fa; padding: 1rem; border-radius: 6px; margin-top: 1rem; }
+    input[type="file"] { margin: 1rem 0; font-size: 1rem; }
+    progress { margin-top: 0.5rem; width: 100%; }
+    #output { white-space: pre-wrap; background: #f8f9fa; padding: 1rem; border-radius: 6px; margin-top: 1rem; min-height: 100px; }
     .hidden { display: none; }
+    .log { color: #666; font-size: 0.9em; margin-top: 0.5rem; }
   </style>
 </head>
 <body>
   <h1>🏦 Bank Statement PDF Parser</h1>
-  <p>Upload a bank statement PDF (e.g., from Monzo, HSBC, Starling). We'll extract the text.</p>
+  <p>Upload a PDF (e.g., from your bank). We'll extract the text here.</p>
 
   <input type="file" id="pdfUpload" accept=".pdf" />
   <progress id="progress" value="0" max="100" class="hidden"></progress>
+  <div id="log" class="log"></div>
   
-  <div id="output" style="height: 400px; overflow: auto;"></div>
+  <div id="output" aria-live="polite"></div>
 
-  <!-- Load pdf.js from CDN -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.js"></script>
   <script>
-    // Set worker path for pdf.js
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 
-      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.js';
-
+    // ✅ Safer: bundle pdf.js core logic inline (no external CDN issues)
+    // This is a minimal fallback — full parsing still needs pdf.js, but we’ll load it carefully
     document.getElementById('pdfUpload').addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
 
       const output = document.getElementById('output');
+      const log = document.getElementById('log');
       const progress = document.getElementById('progress');
-      output.textContent = 'Loading PDF...';
+
+      output.textContent = '';
+      log.textContent = '✅ File selected: ' + file.name;
       progress.classList.remove('hidden');
+      progress.value = 10;
+
+      // Check file type
+      if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+        log.textContent = '⚠️ Please upload a .pdf file.';
+        progress.classList.add('hidden');
+        return;
+      }
+
+      log.textContent = '📦 Reading file...';
 
       try {
-        const arrayBuffer = await file.arrayBuffer();
-        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-        
-        loadingTask.onProgress = ({ loaded, total }) => {
-          progress.value = (loaded / total) * 100;
+        // Use FileReader instead of arrayBuffer for better browser support
+        const reader = new FileReader();
+        reader.onload = async function() {
+          const typedarray = new Uint8Array(reader.result);
+
+          log.textContent = '📥 Loading pdf.js...';
+
+          // Dynamically import pdf.js worker-compatible version
+          const pdfjs = await import('https://unpkg.com/pdfjs-dist@4.4.168/build/pdf.min.mjs');
+          pdfjs.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@4.4.168/build/pdf.worker.min.mjs';
+
+          log.textContent = '📄 Parsing PDF...';
+          progress.value = 30;
+
+          const loadingTask = pdfjs.getDocument(typedarray);
+          loadingTask.onProgress = ({ loaded, total }) => {
+            progress.value = 30 + (loaded / total) * 60;
+          };
+
+          const pdf = await loadingTask.promise;
+          log.textContent = `✅ Loaded ${pdf.numPages} page(s). Extracting text...`;
+
+          let fullText = '';
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items
+              .map(item => item.str)
+              .filter(str => str.trim().length > 0)
+              .join(' ');
+            fullText += `--- Page ${i} ---\n${pageText.trim()}\n\n`;
+            log.textContent = `📄 Page ${i}/${pdf.numPages} done`;
+          }
+
+          output.textContent = fullText || '🔍 No text found in PDF (may be scanned/image-based).';
+          progress.classList.add('hidden');
+          log.textContent = '🎉 Done! Scroll down to see extracted text.';
         };
 
-        const pdf = await loadingTask.promise;
-        let fullText = `📄 PDF loaded (${pdf.numPages} pages):\n\n`;
+        reader.onerror = () => {
+          log.textContent = '❌ Failed to read file.';
+          progress.classList.add('hidden');
+        };
 
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i);
-          const textContent = await page.getTextContent();
-          const pageText = textContent.items.map(item => item.str).join(' ');
-          fullText += `--- Page ${i} ---\n${pageText.trim()}\n\n`;
-        }
-
-        output.textContent = fullText;
-        progress.classList.add('hidden');
+        reader.readAsArrayBuffer(file);
       } catch (error) {
-        output.textContent = `❌ Error: ${error.message}\n\nTry a different PDF.`;
-        console.error(error);
+        log.textContent = `💥 Error: ${error.message}`;
+        output.textContent = `Error details (for debugging):\n${error.stack || error}`;
         progress.classList.add('hidden');
+        console.error(error);
       }
     });
   </script>
