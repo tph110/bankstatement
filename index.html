@@ -3,29 +3,173 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>🏦 Bank Statement Parser</title>
+  <title>🏦 Chase Statement Parser</title>
   <style>
-    body { font-family: -apple-system, sans-serif; padding: 2rem; max-width: 800px; margin: 0 auto; }
-    input[type="file"] { margin: 1rem 0; font-size: 1rem; }
-    progress { margin-top: 0.5rem; width: 100%; }
-    #output { white-space: pre-wrap; background: #f8f9fa; padding: 1rem; border-radius: 6px; margin-top: 1rem; min-height: 100px; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      padding: 1.5rem;
+      max-width: 900px;
+      margin: 0 auto;
+      background-color: #fafafa;
+      color: #333;
+    }
+    h1 { color: #1a5fb4; margin-bottom: 0.5rem; }
+    .subtitle { color: #666; margin-top: 0; }
+    input[type="file"] {
+      margin: 1rem 0;
+      font-size: 1rem;
+      padding: 0.5rem;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+    }
+    progress {
+      margin-top: 0.5rem;
+      width: 100%;
+      height: 6px;
+      border-radius: 3px;
+    }
+    .log {
+      font-size: 0.85rem;
+      color: #555;
+      margin: 0.5rem 0;
+      min-height: 1.2em;
+    }
+    #output {
+      margin-top: 1.5rem;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      overflow: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }
+    th, td {
+      padding: 12px 14px;
+      text-align: left;
+      border-bottom: 1px solid #eee;
+    }
+    th {
+      background-color: #f8f9fa;
+      font-weight: 600;
+      color: #1a5fb4;
+    }
+    tr.expense td:first-child { color: #d32f2f; }
+    tr.income td:first-child { color: #2e7d32; }
+    .summary {
+      background: #f0f7ff;
+      padding: 1rem;
+      border-radius: 8px;
+      margin-top: 1.5rem;
+    }
+    .summary h3 { margin-top: 0; color: #1a5fb4; }
+    .summary p { margin: 0.3rem 0; }
+    .btn {
+      background: #1a5fb4;
+      color: white;
+      border: none;
+      padding: 0.6rem 1.2rem;
+      border-radius: 6px;
+      font-size: 1rem;
+      cursor: pointer;
+      margin-top: 1rem;
+    }
+    .btn:hover { background: #144d96; }
     .hidden { display: none; }
-    .log { color: #666; font-size: 0.9em; margin-top: 0.5rem; }
+    footer {
+      margin-top: 2rem;
+      font-size: 0.8rem;
+      color: #888;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
-  <h1>🏦 Bank Statement PDF Parser</h1>
-  <p>Upload a PDF (e.g., from your bank). We'll extract the text here.</p>
+  <h1>🏦 Chase Statement Parser</h1>
+  <p class="subtitle">Upload your Chase PDF statement — we’ll extract transactions instantly.</p>
 
   <input type="file" id="pdfUpload" accept=".pdf" />
   <progress id="progress" value="0" max="100" class="hidden"></progress>
-  <div id="log" class="log"></div>
+  <div id="log" class="log">👉 Choose a PDF to begin.</div>
   
-  <div id="output" aria-live="polite"></div>
+  <div id="output"></div>
+
+  <footer>
+    <p>All processing happens in your browser — no data is sent anywhere.</p>
+  </footer>
 
   <script>
-    // ✅ Safer: bundle pdf.js core logic inline (no external CDN issues)
-    // This is a minimal fallback — full parsing still needs pdf.js, but we’ll load it carefully
+    // ✅ Chase-specific parser (optimized for your statement format)
+    function parseChaseStatement(text) {
+      const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+
+      const monthMap = {
+        Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',
+        Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12'
+      };
+
+      const transactions = [];
+      // Regex: DD MMM YYYY <description> [+-]£amount £balance
+      const transactionRegex = /^(\d{1,2})\s([A-Za-z]{3})\s(\d{4})\s(.+?)\s([+-]£[\d,]+\.?\d*)\s£[\d,]+\.?\d*$/;
+
+      for (const line of lines) {
+        // Skip non-transaction lines
+        if (
+          line.includes('Account number') ||
+          line.includes('Sort code') ||
+          line.includes('Thomas\' Account statement') ||
+          line.includes('Opening balance') ||
+          line.includes('Closing balance') ||
+          line.includes('Page ') ||
+          line.includes('Some useful information') ||
+          line.includes('The best way to call') ||
+          line.includes('From 1 December 2025') ||
+          line.includes('FSCS') ||
+          line.length < 15
+        ) continue;
+
+        const match = line.match(transactionRegex);
+        if (match) {
+          const [_, day, monthAbbr, year, rawDesc, amountStr] = match;
+
+          // Build ISO date
+          const month = monthMap[monthAbbr] || '01';
+          const date = `${year}-${month}-${day.padStart(2, '0')}`;
+
+          // Parse amount: handle -£, +£, and commas
+          let amountNum = parseFloat(amountStr.replace(/[£,+]/g, ''));
+          if (amountStr.includes('-')) amountNum = -amountNum;
+
+          // Clean description
+          let description = rawDesc
+            .replace(/\b(Purchase|Transfer|Refund|Payment)\b/gi, '')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
+
+          // Extract brand from "X - Y" patterns (e.g., "Fraserretailltd - NYX" → "NYX")
+          if (description.includes(' - ')) {
+            const parts = description.split(' - ');
+            description = parts[parts.length - 1].trim();
+          }
+
+          // Skip internal transfers if only tracking real spend (optional — uncomment to filter)
+          // if (description.toLowerCase().includes('chase saver') || description.toLowerCase().includes('from rewards')) continue;
+
+          transactions.push({
+            date,
+            description,
+            amount: Math.abs(amountNum),
+            type: amountNum < 0 ? 'expense' : 'income'
+          });
+        }
+      }
+
+      return transactions;
+    }
+
+    // 📥 PDF upload & processing
     document.getElementById('pdfUpload').addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -34,12 +178,11 @@
       const log = document.getElementById('log');
       const progress = document.getElementById('progress');
 
-      output.textContent = '';
-      log.textContent = '✅ File selected: ' + file.name;
+      output.innerHTML = '';
+      log.textContent = `✅ File selected: ${file.name}`;
       progress.classList.remove('hidden');
       progress.value = 10;
 
-      // Check file type
       if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
         log.textContent = '⚠️ Please upload a .pdf file.';
         progress.classList.add('hidden');
@@ -49,18 +192,15 @@
       log.textContent = '📦 Reading file...';
 
       try {
-        // Use FileReader instead of arrayBuffer for better browser support
         const reader = new FileReader();
         reader.onload = async function() {
           const typedarray = new Uint8Array(reader.result);
 
-          log.textContent = '📥 Loading pdf.js...';
-
-          // Dynamically import pdf.js worker-compatible version
+          log.textContent = '📥 Loading pdf.js (one-time download)...';
           const pdfjs = await import('https://unpkg.com/pdfjs-dist@4.4.168/build/pdf.min.mjs');
           pdfjs.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@4.4.168/build/pdf.worker.min.mjs';
 
-          log.textContent = '📄 Parsing PDF...';
+          log.textContent = '📄 Parsing PDF pages...';
           progress.value = 30;
 
           const loadingTask = pdfjs.getDocument(typedarray);
@@ -77,15 +217,89 @@
             const textContent = await page.getTextContent();
             const pageText = textContent.items
               .map(item => item.str)
-              .filter(str => str.trim().length > 0)
               .join(' ');
-            fullText += `--- Page ${i} ---\n${pageText.trim()}\n\n`;
-            log.textContent = `📄 Page ${i}/${pdf.numPages} done`;
+            fullText += pageText + '\n';
           }
 
-          output.textContent = fullText || '🔍 No text found in PDF (may be scanned/image-based).';
+          log.textContent = '🔍 Parsing Chase transactions...';
+          const transactions = parseChaseStatement(fullText);
+
+          if (transactions.length === 0) {
+            output.innerHTML = `
+              <div style="padding:1.5rem; background:#fff9f9; border-left:4px solid #d32f2f;">
+                <h3>⚠️ No transactions found</h3>
+                <p>This may be due to:</p>
+                <ul>
+                  <li>A scanned/image-based PDF (no text layer)</li>
+                  <li>A non-Chase statement format</li>
+                </ul>
+                <p><strong>Tip:</strong> Export your statement as <em>digital PDF</em> (not scanned) from the Chase app.</p>
+              </div>
+              <details>
+                <summary>🔍 Show extracted text (first 500 chars)</summary>
+                <pre style="background:#f0f0f0; padding:1rem; overflow:auto; max-height:200px;">${fullText.substring(0, 500)}...</pre>
+              </details>
+            `;
+          } else {
+            // Split into expenses & income
+            const expenses = transactions.filter(t => t.type === 'expense');
+            const income = transactions.filter(t => t.type === 'income');
+
+            // Totals
+            const totalExpenses = expenses.reduce((sum, t) => sum + t.amount, 0);
+            const totalIncome = income.reduce((sum, t) => sum + t.amount, 0);
+            const net = totalIncome - totalExpenses;
+
+            // Build table rows
+            let rows = '';
+            transactions.forEach(t => {
+              const cls = t.type === 'expense' ? 'expense' : 'income';
+              const sign = t.type === 'expense' ? '−' : '+';
+              rows += `
+                <tr class="${cls}">
+                  <td>${t.date}</td>
+                  <td>${t.description}</td>
+                  <td>${sign}£${t.amount.toFixed(2)}</td>
+                </tr>
+              `;
+            });
+
+            // Summary box
+            const summary = `
+              <div class="summary">
+                <h3>📊 Summary</h3>
+                <p><strong>Expenses:</strong> −£${totalExpenses.toFixed(2)}</p>
+                <p><strong>Income:</strong> +£${totalIncome.toFixed(2)}</p>
+                <p><strong>Net change:</strong> <span style="color:${net >= 0 ? '#2e7d32' : '#d32f2f'}">${net >= 0 ? '+' : ''}£${net.toFixed(2)}</span></p>
+                <p><strong>Total transactions:</strong> ${transactions.length}</p>
+              </div>
+            `;
+
+            // Table
+            const table = `
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Description</th>
+                    <th>Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rows}
+                </tbody>
+              </table>
+            `;
+
+            output.innerHTML = summary + table + `
+              <button class="btn" onclick="downloadCSV(${JSON.stringify(transactions)})">
+                ⬇️ Download Transactions as CSV
+              </button>
+            `;
+          }
+
           progress.classList.add('hidden');
-          log.textContent = '🎉 Done! Scroll down to see extracted text.';
+          log.textContent = `🎉 Done! ${transactions.length} transactions extracted.`;
         };
 
         reader.onerror = () => {
@@ -96,11 +310,27 @@
         reader.readAsArrayBuffer(file);
       } catch (error) {
         log.textContent = `💥 Error: ${error.message}`;
-        output.textContent = `Error details (for debugging):\n${error.stack || error}`;
+        output.innerHTML = `<pre style="padding:1rem; background:#ffebee; color:#c62828;">${error.stack || error}</pre>`;
         progress.classList.add('hidden');
         console.error(error);
       }
     });
+
+    // 📥 CSV download function
+    window.downloadCSV = function(transactions) {
+      const header = 'Date,Description,Amount,Type\n';
+      const rows = transactions.map(t => 
+        `"${t.date}","${t.description.replace(/"/g, '""')}","${t.amount}","${t.type}"`
+      ).join('\n');
+      const csvContent = 'data:text/csv;charset=utf-8,' + encodeURIComponent(header + rows);
+      
+      const link = document.createElement('a');
+      link.setAttribute('href', csvContent);
+      link.setAttribute('download', 'chase_transactions.csv');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    };
   </script>
 </body>
 </html>
