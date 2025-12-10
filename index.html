@@ -21,12 +21,15 @@
       padding: 0.5rem;
       border: 1px solid #ddd;
       border-radius: 6px;
+      width: 100%;
+      box-sizing: border-box;
     }
     progress {
       margin-top: 0.5rem;
       width: 100%;
       height: 6px;
       border-radius: 3px;
+      display: none;
     }
     .log {
       font-size: 0.85rem;
@@ -77,7 +80,22 @@
       margin-top: 1rem;
     }
     .btn:hover { background: #144d96; }
-    .hidden { display: none; }
+    .debug-toggle {
+      color: #1a73e8;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    .debug {
+      background: #f8f9fa;
+      padding: 1rem;
+      border-radius: 6px;
+      margin-top: 1rem;
+      white-space: pre-wrap;
+      max-height: 200px;
+      overflow: auto;
+      font-family: monospace;
+      font-size: 0.85rem;
+    }
     footer {
       margin-top: 2rem;
       font-size: 0.8rem;
@@ -91,7 +109,7 @@
   <p class="subtitle">Upload your Chase PDF statement — we’ll extract transactions instantly.</p>
 
   <input type="file" id="pdfUpload" accept=".pdf" />
-  <progress id="progress" value="0" max="100" class="hidden"></progress>
+  <progress id="progress" value="0" max="100"></progress>
   <div id="log" class="log">👉 Choose a PDF to begin.</div>
   
   <div id="output"></div>
@@ -101,9 +119,15 @@
   </footer>
 
   <script>
-    // ✅ Chase-specific parser (optimized for your statement format)
+    // ✅ FINAL Chase Parser — handles multi-space, line breaks, and "Purchase"/"Transfer"
     function parseChaseStatement(text) {
-      const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+      // Step 1: Normalize whitespace & force line breaks before dates
+      let cleaned = text
+        .replace(/\s+/g, ' ') // collapse all whitespace → single space
+        .replace(/(\d{1,2} [A-Za-z]{3} \d{4})/g, '\n$1') // split before each date
+        .trim();
+
+      const lines = cleaned.split('\n').map(l => l.trim()).filter(l => l.length > 25);
 
       const monthMap = {
         Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',
@@ -111,11 +135,11 @@
       };
 
       const transactions = [];
-      // Regex: DD MMM YYYY <description> [+-]£amount £balance
-      const transactionRegex = /^(\d{1,2})\s([A-Za-z]{3})\s(\d{4})\s(.+?)\s([+-]£[\d,]+\.?\d*)\s£[\d,]+\.?\d*$/;
+      // 🔑 Key fix: explicitly match "Purchase", "Transfer", etc. as separate word
+      const transactionRegex = /(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})\s+(.*?)\s+(Purchase|Transfer|Refund|Payment)\s+([+-]£[\d,]*\.?\d+)\s+£[\d,]*\.?\d+/;
 
       for (const line of lines) {
-        // Skip non-transaction lines
+        // Skip known non-transaction lines
         if (
           line.includes('Account number') ||
           line.includes('Sort code') ||
@@ -123,39 +147,28 @@
           line.includes('Opening balance') ||
           line.includes('Closing balance') ||
           line.includes('Page ') ||
-          line.includes('Some useful information') ||
-          line.includes('The best way to call') ||
-          line.includes('From 1 December 2025') ||
           line.includes('FSCS') ||
-          line.length < 15
+          line.includes('From 1 December 2025') ||
+          line.includes('The best way to call')
         ) continue;
 
         const match = line.match(transactionRegex);
         if (match) {
-          const [_, day, monthAbbr, year, rawDesc, amountStr] = match;
+          const [_, day, monthAbbr, year, brand, typeWord, amountStr] = match;
 
-          // Build ISO date
           const month = monthMap[monthAbbr] || '01';
           const date = `${year}-${month}-${day.padStart(2, '0')}`;
 
-          // Parse amount: handle -£, +£, and commas
+          // Parse amount: strip £, commas, handle sign
           let amountNum = parseFloat(amountStr.replace(/[£,+]/g, ''));
           if (amountStr.includes('-')) amountNum = -amountNum;
 
-          // Clean description
-          let description = rawDesc
-            .replace(/\b(Purchase|Transfer|Refund|Payment)\b/gi, '')
-            .replace(/\s{2,}/g, ' ')
-            .trim();
-
-          // Extract brand from "X - Y" patterns (e.g., "Fraserretailltd - NYX" → "NYX")
+          // Clean brand: e.g., "Box.co.uk - Klarna" → "Klarna"
+          let description = brand.trim();
           if (description.includes(' - ')) {
             const parts = description.split(' - ');
             description = parts[parts.length - 1].trim();
           }
-
-          // Skip internal transfers if only tracking real spend (optional — uncomment to filter)
-          // if (description.toLowerCase().includes('chase saver') || description.toLowerCase().includes('from rewards')) continue;
 
           transactions.push({
             date,
@@ -169,7 +182,7 @@
       return transactions;
     }
 
-    // 📥 PDF upload & processing
+    // 📥 PDF Upload Handler
     document.getElementById('pdfUpload').addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -180,12 +193,12 @@
 
       output.innerHTML = '';
       log.textContent = `✅ File selected: ${file.name}`;
-      progress.classList.remove('hidden');
+      progress.style.display = 'block';
       progress.value = 10;
 
-      if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      if (!file.name.toLowerCase().endsWith('.pdf')) {
         log.textContent = '⚠️ Please upload a .pdf file.';
-        progress.classList.add('hidden');
+        progress.style.display = 'none';
         return;
       }
 
@@ -196,7 +209,7 @@
         reader.onload = async function() {
           const typedarray = new Uint8Array(reader.result);
 
-          log.textContent = '📥 Loading pdf.js (one-time download)...';
+          log.textContent = '📥 Loading pdf.js (one-time, ~500 KB)...';
           const pdfjs = await import('https://unpkg.com/pdfjs-dist@4.4.168/build/pdf.min.mjs');
           pdfjs.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@4.4.168/build/pdf.worker.min.mjs';
 
@@ -215,42 +228,35 @@
           for (let i = 1; i <= pdf.numPages; i++) {
             const page = await pdf.getPage(i);
             const textContent = await page.getTextContent();
-            const pageText = textContent.items
-              .map(item => item.str)
-              .join(' ');
-            fullText += pageText + '\n';
+            const pageText = textContent.items.map(item => item.str).join(' ');
+            fullText += pageText + ' ';
           }
 
           log.textContent = '🔍 Parsing Chase transactions...';
           const transactions = parseChaseStatement(fullText);
 
           if (transactions.length === 0) {
+            // Show debug info for troubleshooting
+            const snippet = fullText.substring(0, 800).replace(/\n/g, ' ↵ ');
             output.innerHTML = `
               <div style="padding:1.5rem; background:#fff9f9; border-left:4px solid #d32f2f;">
                 <h3>⚠️ No transactions found</h3>
-                <p>This may be due to:</p>
-                <ul>
-                  <li>A scanned/image-based PDF (no text layer)</li>
-                  <li>A non-Chase statement format</li>
-                </ul>
-                <p><strong>Tip:</strong> Export your statement as <em>digital PDF</em> (not scanned) from the Chase app.</p>
+                <p>We tried to parse your Chase statement, but couldn’t match any lines.</p>
+                <p><strong>Try:</strong> Exporting a fresh statement from the Chase app (PDF, not image).</p>
+                <p class="debug-toggle" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">
+                  🔍 Show first 800 chars (click to toggle)
+                </p>
+                <div class="debug" style="display:none;">${snippet}</div>
               </div>
-              <details>
-                <summary>🔍 Show extracted text (first 500 chars)</summary>
-                <pre style="background:#f0f0f0; padding:1rem; overflow:auto; max-height:200px;">${fullText.substring(0, 500)}...</pre>
-              </details>
             `;
           } else {
-            // Split into expenses & income
             const expenses = transactions.filter(t => t.type === 'expense');
             const income = transactions.filter(t => t.type === 'income');
 
-            // Totals
             const totalExpenses = expenses.reduce((sum, t) => sum + t.amount, 0);
             const totalIncome = income.reduce((sum, t) => sum + t.amount, 0);
             const net = totalIncome - totalExpenses;
 
-            // Build table rows
             let rows = '';
             transactions.forEach(t => {
               const cls = t.type === 'expense' ? 'expense' : 'income';
@@ -264,7 +270,6 @@
               `;
             });
 
-            // Summary box
             const summary = `
               <div class="summary">
                 <h3>📊 Summary</h3>
@@ -275,7 +280,6 @@
               </div>
             `;
 
-            // Table
             const table = `
               <table>
                 <thead>
@@ -292,37 +296,37 @@
             `;
 
             output.innerHTML = summary + table + `
-              <button class="btn" onclick="downloadCSV(${JSON.stringify(transactions)})">
+              <button class="btn" onclick="downloadCSV(${JSON.stringify(transactions).replace(/'/g, "\\'")})">
                 ⬇️ Download Transactions as CSV
               </button>
             `;
           }
 
-          progress.classList.add('hidden');
+          progress.style.display = 'none';
           log.textContent = `🎉 Done! ${transactions.length} transactions extracted.`;
         };
 
         reader.onerror = () => {
           log.textContent = '❌ Failed to read file.';
-          progress.classList.add('hidden');
+          progress.style.display = 'none';
         };
 
         reader.readAsArrayBuffer(file);
       } catch (error) {
         log.textContent = `💥 Error: ${error.message}`;
         output.innerHTML = `<pre style="padding:1rem; background:#ffebee; color:#c62828;">${error.stack || error}</pre>`;
-        progress.classList.add('hidden');
+        progress.style.display = 'none';
         console.error(error);
       }
     });
 
-    // 📥 CSV download function
+    // 📥 CSV Download
     window.downloadCSV = function(transactions) {
       const header = 'Date,Description,Amount,Type\n';
       const rows = transactions.map(t => 
         `"${t.date}","${t.description.replace(/"/g, '""')}","${t.amount}","${t.type}"`
       ).join('\n');
-      const csvContent = 'data:text/csv;charset=utf-8,' + encodeURIComponent(header + rows);
+      const csvContent = 'text/csv;charset=utf-8,' + encodeURIComponent(header + rows);
       
       const link = document.createElement('a');
       link.setAttribute('href', csvContent);
