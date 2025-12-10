@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>🏦 Chase Statement Parser</title>
+  <title>🏦 Chase Statement Analyser</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -102,11 +103,16 @@
       color: #888;
       text-align: center;
     }
+    #categoryChart { 
+      width: 100%; 
+      height: 250px; 
+      margin: 1.5rem 0; 
+    }
   </style>
 </head>
 <body>
-  <h1>🏦 Chase Statement Parser</h1>
-  <p class="subtitle">Upload your Chase PDF statement — we’ll extract transactions instantly.</p>
+  <h1>🏦 Chase Statement Analyser</h1>
+  <p class="subtitle">Upload your Chase PDF → Get spend insights instantly.</p>
 
   <input type="file" id="pdfUpload" accept=".pdf" />
   <progress id="progress" value="0" max="100"></progress>
@@ -115,16 +121,46 @@
   <div id="output"></div>
 
   <footer>
-    <p>All processing happens in your browser — no data is sent anywhere.</p>
+    <p>All processing happens in your browser — no data leaves your device.</p>
   </footer>
 
   <script>
-    // ✅ FINAL Chase Parser — handles multi-space, line breaks, and "Purchase"/"Transfer"
+    // 🧠 AI-Style Categorisation (on-device, no API)
+    function categoriseTransaction(description) {
+      const desc = description.toLowerCase().trim();
+
+      const rules = [
+        { keywords: ['tesco', 'sainsbury', 'aldi', 'waitrose', 'co-op', 'coop', 'ocado', 'asda', 'lidl', 'morrisons'], category: 'Groceries' },
+        { keywords: ['pret', 'costa', 'starbucks', 'greggs', 'mcdonald', 'burger king', 'nando', 'domino', 'deliveroo', 'just eat', 'ubereats', 'cafe', 'coffee'], category: 'Eating out' },
+        { keywords: ['amazon', 'argos', 'boots', 'superdrug', 'whsmith', 'next', 'zara', 'asos', 'temu', 'shein', 'nyx', 'halfords', 'b&q', 'homebase'], category: 'Shopping' },
+        { keywords: ['petrol', 'fuel', 'shell', 'esso', 'bp', 'trainline', 'gwr', 'thameslink', 'uber', 'bolt', 'taxi', 'bus'], category: 'Transport' },
+        { keywords: ['pharmacy', 'boots', 'superdrug', 'dentist', 'barber', 'hair', 'massage', 'yuenique', 'manor dental'], category: 'Health & Personal' },
+        { keywords: ['netflix', 'spotify', 'disney', 'prime', 'apple.com/bill', 'klarna', 'box.co.uk', 'fraser retail'], category: 'Subscriptions' },
+        { keywords: ['chase saver', 'rewards', 'transfer'], category: 'Transfers' },
+        { keywords: ['payment from', 'from tom', 'salary', 'wage', 'payroll'], category: 'Income' },
+      ];
+
+      for (const rule of rules) {
+        if (rule.keywords.some(kw => desc.includes(kw))) {
+          return rule.category;
+        }
+      }
+
+      // Fallback inference
+      if (desc.includes('gym') || desc.includes('fitness') || desc.includes('sport') || desc.includes('homefitness')) return 'Sports & Health';
+      if (desc.includes('charity') || desc.includes('donation')) return 'Giving';
+      if (desc.includes('hotel') || desc.includes('booking') || desc.includes('airbnb')) return 'Travel';
+      if (desc.includes('pharmacy') || desc.includes('medic')) return 'Health';
+      if (desc.includes('bar') || desc.includes('pub') || desc.includes('club')) return 'Nightlife';
+
+      return 'Other';
+    }
+
+    // ✅ Chase Parser — handles multi-space, line breaks
     function parseChaseStatement(text) {
-      // Step 1: Normalize whitespace & force line breaks before dates
       let cleaned = text
-        .replace(/\s+/g, ' ') // collapse all whitespace → single space
-        .replace(/(\d{1,2} [A-Za-z]{3} \d{4})/g, '\n$1') // split before each date
+        .replace(/\s+/g, ' ')
+        .replace(/(\d{1,2} [A-Za-z]{3} \d{4})/g, '\n$1')
         .trim();
 
       const lines = cleaned.split('\n').map(l => l.trim()).filter(l => l.length > 25);
@@ -135,11 +171,9 @@
       };
 
       const transactions = [];
-      // 🔑 Key fix: explicitly match "Purchase", "Transfer", etc. as separate word
       const transactionRegex = /(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})\s+(.*?)\s+(Purchase|Transfer|Refund|Payment)\s+([+-]£[\d,]*\.?\d+)\s+£[\d,]*\.?\d+/;
 
       for (const line of lines) {
-        // Skip known non-transaction lines
         if (
           line.includes('Account number') ||
           line.includes('Sort code') ||
@@ -159,11 +193,9 @@
           const month = monthMap[monthAbbr] || '01';
           const date = `${year}-${month}-${day.padStart(2, '0')}`;
 
-          // Parse amount: strip £, commas, handle sign
           let amountNum = parseFloat(amountStr.replace(/[£,+]/g, ''));
           if (amountStr.includes('-')) amountNum = -amountNum;
 
-          // Clean brand: e.g., "Box.co.uk - Klarna" → "Klarna"
           let description = brand.trim();
           if (description.includes(' - ')) {
             const parts = description.split(' - ');
@@ -174,7 +206,8 @@
             date,
             description,
             amount: Math.abs(amountNum),
-            type: amountNum < 0 ? 'expense' : 'income'
+            type: amountNum < 0 ? 'expense' : 'income',
+            category: '' // will fill next
           });
         }
       }
@@ -232,11 +265,15 @@
             fullText += pageText + ' ';
           }
 
-          log.textContent = '🔍 Parsing Chase transactions...';
-          const transactions = parseChaseStatement(fullText);
+          log.textContent = '🔍 Parsing transactions...';
+          let transactions = parseChaseStatement(fullText);
+
+          // 🔍 Add categories
+          transactions.forEach(t => {
+            t.category = categoriseTransaction(t.description);
+          });
 
           if (transactions.length === 0) {
-            // Show debug info for troubleshooting
             const snippet = fullText.substring(0, 800).replace(/\n/g, ' ↵ ');
             output.innerHTML = `
               <div style="padding:1.5rem; background:#fff9f9; border-left:4px solid #d32f2f;">
@@ -257,27 +294,22 @@
             const totalIncome = income.reduce((sum, t) => sum + t.amount, 0);
             const net = totalIncome - totalExpenses;
 
-            let rows = '';
-            transactions.forEach(t => {
-              const cls = t.type === 'expense' ? 'expense' : 'income';
-              const sign = t.type === 'expense' ? '−' : '+';
-  
-              // 🔁 Convert YYYY-MM-DD → DD/MM/YYYY
-              const [year, month, day] = t.date.split('-');
-              const ukDate = `${day}/${month}/${year}`;
-
-              rows += `
-                <tr class="${cls}">
-                   <td>${ukDate}</td>
-                   <td>${t.description}</td>
-                   <td>${sign}£${t.amount.toFixed(2)}</td>
-                </tr>
-              `;
+            // 📊 Category totals
+            const categoryTotals = {};
+            expenses.forEach(t => {
+              const cat = t.category;
+              categoryTotals[cat] = (categoryTotals[cat] || 0) + t.amount;
             });
 
-            const summary = `
+            // Top 3 categories
+            const topCategories = Object.entries(categoryTotals)
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 3);
+
+            // Summary box
+            let summary = `
               <div class="summary">
-                <h3>📊 Summary</h3>
+                <h3>📊 Monthly Summary</h3>
                 <p><strong>Expenses:</strong> −£${totalExpenses.toFixed(2)}</p>
                 <p><strong>Income:</strong> +£${totalIncome.toFixed(2)}</p>
                 <p><strong>Net change:</strong> <span style="color:${net >= 0 ? '#2e7d32' : '#d32f2f'}">${net >= 0 ? '+' : ''}£${net.toFixed(2)}</span></p>
@@ -285,12 +317,40 @@
               </div>
             `;
 
+            // Category insights
+            let categoryInsight = `<div class="summary"><h3>🛒 Top Spending Categories</h3>`;
+            topCategories.forEach(([cat, amt]) => {
+              categoryInsight += `<p><strong>${cat}:</strong> £${amt.toFixed(2)}</p>`;
+            });
+            categoryInsight += `<p><em>💡 Tip: "Transfers" are internal — real spend is £${totalExpenses.toFixed(2)}.</em></p></div>`;
+
+            // Build table
+            let rows = '';
+            transactions.forEach(t => {
+              const cls = t.type === 'expense' ? 'expense' : 'income';
+              const sign = t.type === 'expense' ? '−' : '+';
+              
+              // 🔁 Convert YYYY-MM-DD → DD/MM/YYYY
+              const [year, month, day] = t.date.split('-');
+              const ukDate = `${day}/${month}/${year}`;
+
+              rows += `
+                <tr class="${cls}">
+                  <td>${ukDate}</td>
+                  <td>${t.description}</td>
+                  <td>${t.category}</td>
+                  <td>${sign}£${t.amount.toFixed(2)}</td>
+                </tr>
+              `;
+            });
+
             const table = `
               <table>
                 <thead>
                   <tr>
                     <th>Date</th>
                     <th>Description</th>
+                    <th>Category</th>
                     <th>Amount</th>
                   </tr>
                 </thead>
@@ -300,15 +360,15 @@
               </table>
             `;
 
-            output.innerHTML = summary + table + `
+            output.innerHTML = summary + categoryInsight + table + `
               <button class="btn" onclick="downloadCSV(${JSON.stringify(transactions).replace(/'/g, "\\'")})">
-                ⬇️ Download Transactions as CSV
+                ⬇️ Download as CSV (with categories)
               </button>
             `;
           }
 
           progress.style.display = 'none';
-          log.textContent = `🎉 Done! ${transactions.length} transactions extracted.`;
+          log.textContent = `🎉 Done! ${transactions.length} transactions extracted & categorised.`;
         };
 
         reader.onerror = () => {
@@ -325,17 +385,19 @@
       }
     });
 
-    // 📥 CSV Download
+    // 📥 CSV Download (with category)
     window.downloadCSV = function(transactions) {
-      const header = 'Date,Description,Amount,Type\n';
-      const rows = transactions.map(t => 
-        `"${t.date}","${t.description.replace(/"/g, '""')}","${t.amount}","${t.type}"`
-      ).join('\n');
+      const header = 'Date,Description,Category,Amount,Type\n';
+      const rows = transactions.map(t => {
+        const [year, month, day] = t.date.split('-');
+        const ukDate = `${day}/${month}/${year}`;
+        return `"${ukDate}","${t.description.replace(/"/g, '""')}","${t.category}","${t.amount}","${t.type}"`;
+      }).join('\n');
       const csvContent = 'text/csv;charset=utf-8,' + encodeURIComponent(header + rows);
       
       const link = document.createElement('a');
       link.setAttribute('href', csvContent);
-      link.setAttribute('download', 'chase_transactions.csv');
+      link.setAttribute('download', 'chase_analysis.csv');
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
