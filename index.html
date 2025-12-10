@@ -261,11 +261,16 @@
             transactions.forEach(t => {
               const cls = t.type === 'expense' ? 'expense' : 'income';
               const sign = t.type === 'expense' ? '−' : '+';
+  
+              // 🔁 Convert YYYY-MM-DD → DD/MM/YYYY
+              const [year, month, day] = t.date.split('-');
+              const ukDate = `${day}/${month}/${year}`;
+
               rows += `
                 <tr class="${cls}">
-                  <td>${t.date}</td>
-                  <td>${t.description}</td>
-                  <td>${sign}£${t.amount.toFixed(2)}</td>
+                   <td>${ukDate}</td>
+                   <td>${t.description}</td>
+                   <td>${sign}£${t.amount.toFixed(2)}</td>
                 </tr>
               `;
             });
