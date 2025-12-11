@@ -250,14 +250,14 @@
 
         // ✅ Critical: '' key WITH colon, no missing punctuation
       new Chart(ctx, {
-      type: 'pie',
-         {  // ← colon after ''
-        labels: labels,
-        datasets: [{
-          data: data,
-          backgroundColor: colors,
-          borderWidth: 0
-        }]
+        type: 'pie',
+        data: {
+          labels: labels,
+          datasets: [{
+            data: data,
+            backgroundColor: colors,
+            borderWidth: 0
+          }]
         },
         options: {
           plugins: {
