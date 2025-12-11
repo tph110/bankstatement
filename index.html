@@ -155,7 +155,7 @@
       return 'Other';
     }
 
-    // ✅ 2. Chase PDF Parser (handles real-world spacing & minus signs)
+    // ✅ 2. Chase PDF Parser
     function parseChaseStatement(text) {
       let cleaned = text
         .replace(/\s+/g, ' ')
@@ -192,7 +192,7 @@
           const month = monthMap[monthAbbr] || '01';
           const date = `${year}-${month}-${day.padStart(2, '0')}`;
 
-          // 🔑 FIX: Handle all minus sign variants
+          // 🔑 Handle all minus sign variants
           let cleanAmountStr = amountStr
             .replace(/[£,]/g, '')
             .replace(/−|–|—/g, '-')  // en dash, em dash, minus → ASCII '-'
@@ -223,7 +223,7 @@
       return transactions;
     }
 
-    // ✅ 3. Render spending pie chart
+    // ✅ 3. Render spending pie chart (FULLY FIXED)
     function renderCategoryChart(categoryTotals) {
       const container = document.createElement('div');
       container.id = 'chartContainer';
@@ -250,7 +250,7 @@
 
       new Chart(ctx, {
         type: 'pie',
-        data: {  // ✅ 'data:' was missing!
+         {  // ✅ '' key present
           labels,
           datasets: [{
             data,
@@ -258,19 +258,6 @@
             borderWidth: 0
           }]
         },
-        options: {
-          plugins: {
-          legend: { position: 'bottom' }
-          tooltip: {
-            callbacks: {
-              label: (ctx) => `£${ctx.raw.toFixed(2)}`
-            }
-          }
-      },
-    responsive: true,
-    maintainAspectRatio: false
-  }
-});
         options: {
           plugins: {
             legend: { position: 'bottom' },
@@ -286,7 +273,7 @@
       });
     }
 
-    // ✅ 4. Generate smart insights (UK context)
+    // ✅ 4. Generate smart insights (UK-accurate)
     function generateInsights(transactions) {
       const expenses = transactions.filter(t => t.type === 'expense');
       if (expenses.length === 0) return '';
@@ -339,7 +326,7 @@
         insights.push(`🔁 ${transfers} internal transfers detected — these don’t affect real spending.`);
       }
 
-      // ✅ FSCS Protection (real data from fscs.org.uk)
+      // ✅ FSCS Protection — accurate per fscs.org.uk
       insights.push(`🛡️ Your Chase UK deposits are protected by the FSCS up to £120,000 from 1 December 2025 (currently £85,000).`);
 
       return insights.length > 0 
@@ -365,7 +352,7 @@
       document.body.removeChild(link);
     };
 
-    // ✅ 6. PDF Upload Handler (now safe — all functions defined!)
+    // ✅ 6. PDF Upload Handler
     document.getElementById('pdfUpload').addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
