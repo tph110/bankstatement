@@ -192,18 +192,26 @@
           const month = monthMap[monthAbbr] || '01';
           const date = `${year}-${month}-${day.padStart(2, '0')}`;
 
-          // Normalize minus signs: ASCII '-', en dash '–', em dash '—', minus '−'
+          // Parse amount: handle £, commas, and all minus sign variants
           let cleanAmountStr = amountStr
             .replace(/[£,]/g, '')
-            .replace(/−|–|—/g, '-')  // convert all minus-like chars to ASCII '-'
+            .replace(/−|–|—/g, '-')  // unify minus signs
             .trim();
 
           let amountNum = parseFloat(cleanAmountStr);
           if (isNaN(amountNum)) {
-            console.warn('⚠️ Failed to parse amount:', amountStr, '→', cleanAmountStr);
+            console.warn('⚠️ Failed to parse amount:', amountStr);
             amountNum = 0;
-          }
+}
 
+// Later, when building transaction:
+transactions.push({
+  date,
+  description,
+  amount: Math.abs(amountNum),
+  type: amountNum < 0 ? 'expense' : 'income',
+  category: ''
+});
           let description = brand.trim();
           if (description.includes(' - ')) {
             const parts = description.split(' - ');
@@ -453,7 +461,7 @@
             let rows = '';
             transactions.forEach(t => {
               const cls = t.type === 'expense' ? 'expense' : 'income';
-              const sign = t.type === 'expense' ? '−' : '+';
+              const sign = t.type === 'expense' ? '-' : '+';
               
               const [year, month, day] = t.date.split('-');
               const ukDate = `${day}/${month}/${year}`;
