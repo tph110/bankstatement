@@ -192,8 +192,17 @@
           const month = monthMap[monthAbbr] || '01';
           const date = `${year}-${month}-${day.padStart(2, '0')}`;
 
-          let amountNum = parseFloat(amountStr.replace(/[£,+]/g, ''));
-          if (amountStr.includes('-')) amountNum = -amountNum;
+          // Normalize minus signs: ASCII '-', en dash '–', em dash '—', minus '−'
+          let cleanAmountStr = amountStr
+            .replace(/[£,]/g, '')
+            .replace(/−|–|—/g, '-')  // convert all minus-like chars to ASCII '-'
+            .trim();
+
+          let amountNum = parseFloat(cleanAmountStr);
+          if (isNaN(amountNum)) {
+            console.warn('⚠️ Failed to parse amount:', amountStr, '→', cleanAmountStr);
+            amountNum = 0;
+          }
 
           let description = brand.trim();
           if (description.includes(' - ')) {
