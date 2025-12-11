@@ -224,13 +224,10 @@
     }
 
     // ✅ 3. Render spending pie chart (FULLY FIXED)
-    function renderCategoryChart(categoryTotals) {
-      const container = document.createElement('div');
-      container.id = 'chartContainer';
-      document.getElementById('output').insertBefore(container, document.getElementById('output').firstChild);
-
-      const ctx = document.createElement('canvas');
-      container.appendChild(ctx);
+    function renderCategoryChart(categoryTotals, canvasEl) {
+      // Expect a canvas element in the DOM; bail if missing
+      if (!canvasEl) return;
+      const ctx = canvasEl.getContext('2d');
 
       const entries = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]);
       const top5 = entries.slice(0, 5);
@@ -439,9 +436,15 @@
               categoryTotals[cat] = (categoryTotals[cat] || 0) + t.amount;
             });
 
-            // 📈 Render chart (only if expenses exist)
+            // 📈 Chart markup placeholder (render after injecting HTML)
+            let chartSection = '';
             if (Object.keys(categoryTotals).length > 0) {
-              renderCategoryChart(categoryTotals);
+              chartSection = `
+                <div class="summary" style="display:flex; flex-direction:column; gap:0.5rem;">
+                  <h3>🍩 Spending Breakdown</h3>
+                  <canvas id="categoryChart" aria-label="Spending by category" role="img" style="max-width:480px; height:320px;"></canvas>
+                </div>
+              `;
             }
 
             // 💡 Insights
@@ -506,11 +509,17 @@
               </table>
             `;
 
-            output.innerHTML = summary + categoryInsight + insightsHtml + table + `
+            output.innerHTML = chartSection + summary + categoryInsight + insightsHtml + table + `
               <button class="btn" onclick="downloadCSV(${JSON.stringify(transactions).replace(/'/g, "\\'")})">
                 ⬇️ Download Full Analysis (CSV)
               </button>
             `;
+
+            // Render chart once the canvas exists in the DOM
+            if (Object.keys(categoryTotals).length > 0) {
+              const canvasEl = document.getElementById('categoryChart');
+              renderCategoryChart(categoryTotals, canvasEl);
+            }
           }
 
           progress.style.display = 'none';
