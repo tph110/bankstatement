@@ -125,7 +125,7 @@
   </footer>
 
   <script>
-    // 🧠 AI-Style Categorisation
+    // ✅ 1. Categorisation (on-device, no API)
     function categoriseTransaction(description) {
       const desc = description.toLowerCase().trim();
 
@@ -155,7 +155,7 @@
       return 'Other';
     }
 
-    // ✅ Chase Parser
+    // ✅ 2. Chase PDF Parser (handles real-world spacing & minus signs)
     function parseChaseStatement(text) {
       let cleaned = text
         .replace(/\s+/g, ' ')
@@ -192,26 +192,18 @@
           const month = monthMap[monthAbbr] || '01';
           const date = `${year}-${month}-${day.padStart(2, '0')}`;
 
-          // Parse amount: handle £, commas, and all minus sign variants
+          // 🔑 FIX: Handle all minus sign variants
           let cleanAmountStr = amountStr
             .replace(/[£,]/g, '')
-            .replace(/−|–|—/g, '-')  // unify minus signs
+            .replace(/−|–|—/g, '-')  // en dash, em dash, minus → ASCII '-'
             .trim();
 
           let amountNum = parseFloat(cleanAmountStr);
           if (isNaN(amountNum)) {
             console.warn('⚠️ Failed to parse amount:', amountStr);
             amountNum = 0;
-}
+          }
 
-// Later, when building transaction:
-transactions.push({
-  date,
-  description,
-  amount: Math.abs(amountNum),
-  type: amountNum < 0 ? 'expense' : 'income',
-  category: ''
-});
           let description = brand.trim();
           if (description.includes(' - ')) {
             const parts = description.split(' - ');
@@ -231,7 +223,7 @@ transactions.push({
       return transactions;
     }
 
-    // 📈 Render category pie chart
+    // ✅ 3. Render spending pie chart
     function renderCategoryChart(categoryTotals) {
       const container = document.createElement('div');
       container.id = 'chartContainer';
@@ -281,14 +273,14 @@ transactions.push({
       });
     }
 
-    // 💡 Generate smart insights
+    // ✅ 4. Generate smart insights (UK context)
     function generateInsights(transactions) {
       const expenses = transactions.filter(t => t.type === 'expense');
       if (expenses.length === 0) return '';
 
       const insights = [];
 
-      // Coffee insight
+      // Coffee spend
       const coffeeTransactions = expenses.filter(t => 
         t.category === 'Eating out' && 
         /pret|costa|starbucks|coffee|cafe/i.test(t.description)
@@ -300,7 +292,7 @@ transactions.push({
         insights.push(`☕ You spent £${coffeeSpend.toFixed(2)} on coffee this month — ${ratio}× the UK average!`);
       }
 
-      // Grocery insight
+      // Grocery efficiency
       const groceryExpenses = expenses.filter(t => t.category === 'Groceries');
       const grocerySpend = groceryExpenses.reduce((sum, t) => sum + t.amount, 0);
       const groceryVisits = groceryExpenses.length;
@@ -334,17 +326,33 @@ transactions.push({
         insights.push(`🔁 ${transfers} internal transfers detected — these don’t affect real spending.`);
       }
 
-      // FSCS note (UK context!)
-      if (transactions.some(t => t.description.toLowerCase().includes('chase'))) {
-        insights.push(`🛡️ Your Chase UK deposits are protected by the FSCS up to £85,000 (rising to £120,000 from 1 Dec 2025).`);
-      }
+      // ✅ FSCS Protection (real data from fscs.org.uk)
+      insights.push(`🛡️ Your Chase UK deposits are protected by the FSCS up to £120,000 from 1 December 2025 (currently £85,000).`);
 
       return insights.length > 0 
         ? `<div class="summary"><h3>💡 Smart Insights</h3>${insights.map(i => `<p>${i}</p>`).join('')}</div>`
         : '';
     }
 
-    // 📥 PDF Upload Handler
+    // ✅ 5. CSV Download
+    window.downloadCSV = function(transactions) {
+      const header = 'Date,Description,Category,Amount,Type\n';
+      const rows = transactions.map(t => {
+        const [year, month, day] = t.date.split('-');
+        const ukDate = `${day}/${month}/${year}`;
+        return `"${ukDate}","${t.description.replace(/"/g, '""')}","${t.category}","${t.amount}","${t.type}"`;
+      }).join('\n');
+      const csvContent = 'text/csv;charset=utf-8,' + encodeURIComponent(header + rows);
+      
+      const link = document.createElement('a');
+      link.setAttribute('href', csvContent);
+      link.setAttribute('download', 'chase_spending_analysis.csv');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    };
+
+    // ✅ 6. PDF Upload Handler (now safe — all functions defined!)
     document.getElementById('pdfUpload').addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -397,7 +405,7 @@ transactions.push({
           log.textContent = '🔍 Parsing transactions...';
           let transactions = parseChaseStatement(fullText);
 
-          // 🔍 Add categories
+          // Add categories
           transactions.forEach(t => {
             t.category = categoriseTransaction(t.description);
           });
@@ -423,20 +431,22 @@ transactions.push({
             const totalIncome = income.reduce((sum, t) => sum + t.amount, 0);
             const net = totalIncome - totalExpenses;
 
-            // 📊 Category totals
+            // Category totals (only for expenses)
             const categoryTotals = {};
             expenses.forEach(t => {
               const cat = t.category;
               categoryTotals[cat] = (categoryTotals[cat] || 0) + t.amount;
             });
 
-            // 📈 Render chart
-            renderCategoryChart(categoryTotals);
+            // 📈 Render chart (only if expenses exist)
+            if (Object.keys(categoryTotals).length > 0) {
+              renderCategoryChart(categoryTotals);
+            }
 
-            // 💡 Generate insights
+            // 💡 Insights
             const insightsHtml = generateInsights(transactions);
 
-            // Summary box
+            // Summary
             let summary = `
               <div class="summary">
                 <h3>📊 Monthly Summary</h3>
@@ -447,7 +457,7 @@ transactions.push({
               </div>
             `;
 
-            // Category insights
+            // Top categories
             const topCategories = Object.entries(categoryTotals)
               .sort((a, b) => b[1] - a[1])
               .slice(0, 3);
@@ -455,14 +465,17 @@ transactions.push({
             topCategories.forEach(([cat, amt]) => {
               categoryInsight += `<p><strong>${cat}:</strong> £${amt.toFixed(2)}</p>`;
             });
-            categoryInsight += `<p><em>💡 "Transfers" are internal — real spend is £${totalExpenses.toFixed(2)}.</em></p></div>`;
+            if (topCategories.length === 0) {
+              categoryInsight += `<p>No spending detected — all transactions were income/transfers.</p>`;
+            }
+            categoryInsight += `</div>`;
 
-            // Build table
+            // Build table — ✅ FIXED SIGN
             let rows = '';
             transactions.forEach(t => {
               const cls = t.type === 'expense' ? 'expense' : 'income';
-              const sign = t.type === 'expense' ? '-' : '+';
-              
+              const sign = t.type === 'expense' ? '-' : '+';  // ASCII hyphen
+
               const [year, month, day] = t.date.split('-');
               const ukDate = `${day}/${month}/${year}`;
 
@@ -515,24 +528,6 @@ transactions.push({
         progress.style.display = 'none';
         console.error(error);
       }
-    });
-
-    // 📥 CSV Download
-    window.downloadCSV = function(transactions) {
-      const header = 'Date,Description,Category,Amount,Type\n';
-      const rows = transactions.map(t => {
-        const [year, month, day] = t.date.split('-');
-        const ukDate = `${day}/${month}/${year}`;
-        return `"${ukDate}","${t.description.replace(/"/g, '""')}","${t.category}","${t.amount}","${t.type}"`;
-      }).join('\n');
-      const csvContent = 'text/csv;charset=utf-8,' + encodeURIComponent(header + rows);
-      
-      const link = document.createElement('a');
-      link.setAttribute('href', csvContent);
-      link.setAttribute('download', 'chase_spending_analysis.csv');
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
     };
   </script>
 </body>
