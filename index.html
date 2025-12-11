@@ -103,10 +103,11 @@
       color: #888;
       text-align: center;
     }
-    #chartContainer { 
-      width: 100%; 
-      height: 300px; 
-      margin: 1.5rem 0; 
+    .chart-wrapper {
+      max-width: 480px;
+      height: 320px;
+      margin: 0 auto;
+      position: relative;
     }
   </style>
 </head>
@@ -224,10 +225,20 @@
     }
 
     // ✅ 3. Render spending pie chart (FULLY FIXED)
+    let categoryChartInstance = null;
+
     function renderCategoryChart(categoryTotals, canvasEl) {
       // Expect a canvas element in the DOM; bail if missing
       if (!canvasEl) return;
+
+      // Stabilise size to prevent layout jitter
+      canvasEl.width = 480;
+      canvasEl.height = 320;
       const ctx = canvasEl.getContext('2d');
+
+      if (categoryChartInstance) {
+        categoryChartInstance.destroy();
+      }
 
       const entries = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]);
       const top5 = entries.slice(0, 5);
@@ -246,7 +257,7 @@
       }
 
         // ✅ Critical: '' key WITH colon, no missing punctuation
-      new Chart(ctx, {
+      categoryChartInstance = new Chart(ctx, {
         type: 'pie',
         data: {
           labels: labels,
@@ -265,7 +276,7 @@
               }
             }
           },
-          responsive: true,
+          responsive: false,
           maintainAspectRatio: false
         }
       });
@@ -440,9 +451,11 @@
             let chartSection = '';
             if (Object.keys(categoryTotals).length > 0) {
               chartSection = `
-                <div class="summary" style="display:flex; flex-direction:column; gap:0.5rem;">
+                <div class="summary" style="display:flex; flex-direction:column; gap:0.75rem;">
                   <h3>🍩 Spending Breakdown</h3>
-                  <canvas id="categoryChart" aria-label="Spending by category" role="img" style="max-width:480px; height:320px;"></canvas>
+                  <div class="chart-wrapper">
+                    <canvas id="categoryChart" aria-label="Spending by category" role="img"></canvas>
+                  </div>
                 </div>
               `;
             }
