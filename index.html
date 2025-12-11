@@ -103,16 +103,16 @@
       color: #888;
       text-align: center;
     }
-    #categoryChart { 
+    #chartContainer { 
       width: 100%; 
-      height: 250px; 
+      height: 300px; 
       margin: 1.5rem 0; 
     }
   </style>
 </head>
 <body>
   <h1>🏦 Chase Statement Analyser</h1>
-  <p class="subtitle">Upload your Chase PDF → Get spend insights instantly.</p>
+  <p class="subtitle">Upload your Chase PDF → Get smart spend insights.</p>
 
   <input type="file" id="pdfUpload" accept=".pdf" />
   <progress id="progress" value="0" max="100"></progress>
@@ -125,16 +125,16 @@
   </footer>
 
   <script>
-    // 🧠 AI-Style Categorisation (on-device, no API)
+    // 🧠 AI-Style Categorisation
     function categoriseTransaction(description) {
       const desc = description.toLowerCase().trim();
 
       const rules = [
         { keywords: ['tesco', 'sainsbury', 'aldi', 'waitrose', 'co-op', 'coop', 'ocado', 'asda', 'lidl', 'morrisons'], category: 'Groceries' },
-        { keywords: ['pret', 'costa', 'starbucks', 'greggs', 'mcdonald', 'burger king', 'nando', 'domino', 'deliveroo', 'just eat', 'ubereats', 'cafe', 'coffee', 'restaurant'], category: 'Eating out' },
-        { keywords: ['amazon', 'argos', 'boots', 'superdrug', 'whsmith', 'marks and spencer', 'next', 'zara', 'asos', 'temu', 'shein', 'nyx', 'halfords', 'b&q', 'homebase'], category: 'Shopping' },
+        { keywords: ['pret', 'costa', 'starbucks', 'greggs', 'mcdonald', 'burger king', 'nando', 'domino', 'deliveroo', 'just eat', 'ubereats', 'cafe', 'coffee'], category: 'Eating out' },
+        { keywords: ['amazon', 'argos', 'boots', 'superdrug', 'whsmith', 'next', 'zara', 'asos', 'temu', 'shein', 'nyx', 'halfords', 'b&q', 'homebase'], category: 'Shopping' },
         { keywords: ['petrol', 'fuel', 'shell', 'esso', 'bp', 'trainline', 'gwr', 'thameslink', 'uber', 'bolt', 'taxi', 'bus'], category: 'Transport' },
-        { keywords: ['pharmacy', 'boots', 'superdrug', 'dentist', 'barber', 'dental', 'hair', 'massage', 'yuenique', 'manor dental'], category: 'Health & Personal' },
+        { keywords: ['pharmacy', 'boots', 'superdrug', 'dentist', 'barber', 'hair', 'massage', 'yuenique', 'manor dental'], category: 'Health & Personal' },
         { keywords: ['netflix', 'spotify', 'disney', 'prime', 'apple.com/bill', 'klarna', 'box.co.uk', 'fraser retail'], category: 'Subscriptions' },
         { keywords: ['chase saver', 'rewards', 'transfer'], category: 'Transfers' },
         { keywords: ['payment from', 'from tom', 'salary', 'wage', 'payroll'], category: 'Income' },
@@ -146,7 +146,6 @@
         }
       }
 
-      // Fallback inference
       if (desc.includes('gym') || desc.includes('fitness') || desc.includes('sport') || desc.includes('homefitness')) return 'Sports & Health';
       if (desc.includes('charity') || desc.includes('donation')) return 'Giving';
       if (desc.includes('hotel') || desc.includes('booking') || desc.includes('airbnb')) return 'Travel';
@@ -156,7 +155,7 @@
       return 'Other';
     }
 
-    // ✅ Chase Parser — handles multi-space, line breaks
+    // ✅ Chase Parser
     function parseChaseStatement(text) {
       let cleaned = text
         .replace(/\s+/g, ' ')
@@ -207,12 +206,125 @@
             description,
             amount: Math.abs(amountNum),
             type: amountNum < 0 ? 'expense' : 'income',
-            category: '' // will fill next
+            category: ''
           });
         }
       }
 
       return transactions;
+    }
+
+    // 📈 Render category pie chart
+    function renderCategoryChart(categoryTotals) {
+      const container = document.createElement('div');
+      container.id = 'chartContainer';
+      document.getElementById('output').insertBefore(container, document.getElementById('output').firstChild);
+
+      const ctx = document.createElement('canvas');
+      container.appendChild(ctx);
+
+      const entries = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]);
+      const top5 = entries.slice(0, 5);
+      const other = entries.slice(5).reduce((sum, [, amt]) => sum + amt, 0);
+      
+      const labels = top5.map(([cat]) => cat);
+      const data = top5.map(([, amt]) => amt);
+      const colors = [
+        '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
+        '#FF9F40', '#C9CBCF', '#4B9F71', '#8E5EA2', '#329F8C'
+      ];
+
+      if (other > 0) {
+        labels.push('Other');
+        data.push(other);
+      }
+
+      new Chart(ctx, {
+        type: 'pie',
+        data: {
+          labels,
+          datasets: [{
+            data,
+            backgroundColor: colors,
+            borderWidth: 0
+          }]
+        },
+        options: {
+          plugins: {
+            legend: { position: 'bottom' },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => `£${ctx.raw.toFixed(2)}`
+              }
+            }
+          },
+          responsive: true,
+          maintainAspectRatio: false
+        }
+      });
+    }
+
+    // 💡 Generate smart insights
+    function generateInsights(transactions) {
+      const expenses = transactions.filter(t => t.type === 'expense');
+      if (expenses.length === 0) return '';
+
+      const insights = [];
+
+      // Coffee insight
+      const coffeeTransactions = expenses.filter(t => 
+        t.category === 'Eating out' && 
+        /pret|costa|starbucks|coffee|cafe/i.test(t.description)
+      );
+      const coffeeSpend = coffeeTransactions.reduce((sum, t) => sum + t.amount, 0);
+      if (coffeeSpend > 0) {
+        const avgUK = 28.50;
+        const ratio = Math.round(coffeeSpend / avgUK * 10) / 10;
+        insights.push(`☕ You spent £${coffeeSpend.toFixed(2)} on coffee this month — ${ratio}× the UK average!`);
+      }
+
+      // Grocery insight
+      const groceryExpenses = expenses.filter(t => t.category === 'Groceries');
+      const grocerySpend = groceryExpenses.reduce((sum, t) => sum + t.amount, 0);
+      const groceryVisits = groceryExpenses.length;
+      if (groceryVisits > 0) {
+        const avgSpendPerTrip = grocerySpend / groceryVisits;
+        if (avgSpendPerTrip > 35) {
+          insights.push(`🛒 Average grocery trip: £${avgSpendPerTrip.toFixed(2)} — try smaller, more frequent shops to reduce impulse buys.`);
+        } else if (avgSpendPerTrip < 15) {
+          insights.push(`🛒 Excellent! You spent just £${avgSpendPerTrip.toFixed(2)} per grocery trip.`);
+        }
+      }
+
+      // Subscriptions
+      const subs = expenses.filter(t => t.category === 'Subscriptions');
+      const subSpend = subs.reduce((sum, t) => sum + t.amount, 0);
+      if (subSpend > 30) {
+        insights.push(`📱 You spent £${subSpend.toFixed(2)} on subscriptions — review unused ones.`);
+      }
+
+      // Largest spend
+      if (expenses.length > 0) {
+        const largest = expenses.reduce((max, t) => t.amount > max.amount ? t : max);
+        if (largest.amount > 50) {
+          insights.push(`⚠️ Largest single expense: £${largest.amount.toFixed(2)} at ${largest.description}`);
+        }
+      }
+
+      // Transfers
+      const transfers = transactions.filter(t => t.category === 'Transfers').length;
+      if (transfers > 0) {
+        insights.push(`🔁 ${transfers} internal transfers detected — these don’t affect real spending.`);
+      }
+
+      // FSCS note (UK context!)
+      if (transactions.some(t => t.description.toLowerCase().includes('chase'))) {
+        insights.push(`🛡️ Your Chase UK deposits are protected by the FSCS up to £85,000 (rising to £120,000 from 1 Dec 2025).`);
+      }
+
+      return insights.length > 0 
+        ? `<div class="summary"><h3>💡 Smart Insights</h3>${insights.map(i => `<p>${i}</p>`).join('')}</div>`
+        : '';
     }
 
     // 📥 PDF Upload Handler
@@ -301,10 +413,11 @@
               categoryTotals[cat] = (categoryTotals[cat] || 0) + t.amount;
             });
 
-            // Top 3 categories
-            const topCategories = Object.entries(categoryTotals)
-              .sort((a, b) => b[1] - a[1])
-              .slice(0, 3);
+            // 📈 Render chart
+            renderCategoryChart(categoryTotals);
+
+            // 💡 Generate insights
+            const insightsHtml = generateInsights(transactions);
 
             // Summary box
             let summary = `
@@ -318,11 +431,14 @@
             `;
 
             // Category insights
+            const topCategories = Object.entries(categoryTotals)
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 3);
             let categoryInsight = `<div class="summary"><h3>🛒 Top Spending Categories</h3>`;
             topCategories.forEach(([cat, amt]) => {
               categoryInsight += `<p><strong>${cat}:</strong> £${amt.toFixed(2)}</p>`;
             });
-            categoryInsight += `<p><em>💡 Tip: "Transfers" are internal — real spend is £${totalExpenses.toFixed(2)}.</em></p></div>`;
+            categoryInsight += `<p><em>💡 "Transfers" are internal — real spend is £${totalExpenses.toFixed(2)}.</em></p></div>`;
 
             // Build table
             let rows = '';
@@ -330,7 +446,6 @@
               const cls = t.type === 'expense' ? 'expense' : 'income';
               const sign = t.type === 'expense' ? '−' : '+';
               
-              // 🔁 Convert YYYY-MM-DD → DD/MM/YYYY
               const [year, month, day] = t.date.split('-');
               const ukDate = `${day}/${month}/${year}`;
 
@@ -360,15 +475,15 @@
               </table>
             `;
 
-            output.innerHTML = summary + categoryInsight + table + `
+            output.innerHTML = summary + categoryInsight + insightsHtml + table + `
               <button class="btn" onclick="downloadCSV(${JSON.stringify(transactions).replace(/'/g, "\\'")})">
-                ⬇️ Download as CSV (with categories)
+                ⬇️ Download Full Analysis (CSV)
               </button>
             `;
           }
 
           progress.style.display = 'none';
-          log.textContent = `🎉 Done! ${transactions.length} transactions extracted & categorised.`;
+          log.textContent = `🎉 Done! ${transactions.length} transactions analysed.`;
         };
 
         reader.onerror = () => {
@@ -385,7 +500,7 @@
       }
     });
 
-    // 📥 CSV Download (with category)
+    // 📥 CSV Download
     window.downloadCSV = function(transactions) {
       const header = 'Date,Description,Category,Amount,Type\n';
       const rows = transactions.map(t => {
@@ -397,7 +512,7 @@
       
       const link = document.createElement('a');
       link.setAttribute('href', csvContent);
-      link.setAttribute('download', 'chase_analysis.csv');
+      link.setAttribute('download', 'chase_spending_analysis.csv');
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
