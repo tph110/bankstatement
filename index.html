@@ -250,7 +250,7 @@
 
       new Chart(ctx, {
         type: 'pie',
-        data: {
+        data: {  // ✅ 'data:' was missing!
           labels,
           datasets: [{
             data,
@@ -258,6 +258,19 @@
             borderWidth: 0
           }]
         },
+        options: {
+          plugins: {
+          legend: { position: 'bottom' },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => `£${ctx.raw.toFixed(2)}`
+            }
+          }
+      },
+    responsive: true,
+    maintainAspectRatio: false
+  }
+});
         options: {
           plugins: {
             legend: { position: 'bottom' },
